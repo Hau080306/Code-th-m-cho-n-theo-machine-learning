@@ -1,0 +1,184 @@
+#include <EEPROM.h>
+
+const int In1 = 2;
+const int In2 = 3;
+const int In3 = 4;
+const int In4 = 5;
+const int EnA = 6;
+const int EnB = 7;
+const int trigTruoc = 10;
+const int echoTruoc = 11;
+const int trigPhai = 8;
+const int echoPhai = 9;
+const int trigTrai = 12;
+const int echoTrai = 13;
+
+const int soTrangThai = 18;
+const int soHanhDong = 4;
+float Q[soTrangThai][soHanhDong];
+float alpha = 0.1;
+float gamma = 0.9;
+int trangThai, hanhDong;
+bool ngoCut[soTrangThai] = {false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false};
+bool denDich = false;
+const int trangThaiDich = 17;
+
+void setup() {
+pinMode(In1, OUTPUT);
+pinMode(In2, OUTPUT);
+pinMode(In3, OUTPUT);
+pinMode(In4, OUTPUT);
+pinMode(EnA, OUTPUT);
+pinMode(EnB, OUTPUT);
+pinMode(trigTruoc, OUTPUT);
+pinMode(echoTruoc, INPUT);
+pinMode(trigPhai, OUTPUT);
+pinMode(echoPhai, INPUT);
+pinMode(trigTrai, OUTPUT);
+pinMode(echoTrai, INPUT);
+Serial.begin(9600);
+
+for (int i = 0; i < soTrangThai; i++) {
+for (int j = 0; j < soHanhDong; j++) {
+Q[i][j] = EEPROM.read(i * soHanhDong + j) / 255.0;
+}
+}
+}
+
+long doKhoangCach(int trigPin, int echoPin) {
+digitalWrite(trigPin, LOW);
+delayMicroseconds(2);
+digitalWrite(trigPin, HIGH);
+delayMicroseconds(10);
+digitalWrite(trigPin, LOW);
+long duration = pulseIn(echoPin, HIGH);
+long distance = duration * 0.034 / 2;
+return distance;
+}
+
+void tien() {
+digitalWrite(In1, HIGH);
+digitalWrite(In2, LOW);
+digitalWrite(In3, HIGH);
+digitalWrite(In4, LOW);
+analogWrite(EnA, 200);
+analogWrite(EnB, 200);
+}
+
+void lui() {
+digitalWrite(In1, LOW);
+digitalWrite(In2, HIGH);
+digitalWrite(In3, LOW);
+digitalWrite(In4, HIGH);
+analogWrite(EnA, 200);
+analogWrite(EnB, 200);
+}
+
+void reTrai() {
+digitalWrite(In1, LOW);
+digitalWrite(In2, HIGH);
+digitalWrite(In3, HIGH);
+digitalWrite(In4, LOW);
+analogWrite(EnA, 200);
+analogWrite(EnB, 200);
+}
+
+void rePhai() {
+digitalWrite(In1, HIGH);
+digitalWrite(In2, LOW);
+digitalWrite(In3, LOW);
+digitalWrite(In4, HIGH);
+analogWrite(EnA, 200);
+analogWrite(EnB, 200);
+}
+
+void dungLai() {
+digitalWrite(In1, LOW);
+digitalWrite(In2, LOW);
+digitalWrite(In3, LOW);
+digitalWrite(In4, LOW);
+analogWrite(EnA, 0);
+analogWrite(EnB, 0);
+}
+
+int trangThaiHienTai() {
+long khoangCachTruoc = doKhoangCach(trigTruoc, echoTruoc);
+long khoangCachPhai = doKhoangCach(trigPhai, echoPhai);
+long khoangCachTrai = doKhoangCach(trigTrai, echoTrai);
+
+if (khoangCachTruoc < 20 && khoangCachPhai < 20 && khoangCachTrai < 20) return 3;
+if (khoangCachTruoc < 20) return 0;
+if (khoangCachPhai < 20) return 1;
+if (khoangCachTrai < 20) return 2;
+return 4;
+}
+
+int chonHanhDong(int trangThai) {
+if (trangThai == 3) {
+return 1;
+}
+
+int hanhDongTotNhat = 0;
+float maxQ = Q[trangThai][0];
+for (int i = 1; i < soHanhDong; i++) {
+if (Q[trangThai][i] > maxQ && !ngoCut[trangThai]) {
+maxQ = Q[trangThai][i];
+hanhDongTotNhat = i;
+}
+}
+return hanhDongTotNhat;
+}
+
+void capNhatQ(int trangThai, int hanhDong, float phanThuong, int trangThaiTiepTheo) {
+float maxQ = Q[trangThaiTiepTheo][0];
+for (int i = 1; i < soHanhDong; i++) {
+if (Q[trangThaiTiepTheo][i] > maxQ) {
+maxQ = Q[trangThaiTiepTheo][i];
+}
+}
+Q[trangThai][hanhDong] = Q[trangThai][hanhDong] + alpha * (phanThuong + gamma * maxQ - Q[trangThai][hanhDong]);
+
+for (int i = 0; i < soTrangThai; i++) {
+for (int j = 0; j < soHanhDong; j++) {
+EEPROM.write(i * soHanhDong + j, int(Q[i][j] * 255));
+}
+}
+
+if (phanThuong == -1) {
+ngoCut[trangThai] = true;
+}
+}
+
+void loop() {
+trangThai = trangThaiHienTai();
+hanhDong = chonHanhDong(trangThai);
+
+switch (hanhDong) {
+case 0: tien(); break;
+case 1: lui(); break;
+case 2: reTrai(); break;
+case 3: rePhai(); break;
+}
+
+delay(500);
+
+int trangThaiTiepTheo = trangThaiHienTai();
+float phanThuong = (trangThaiTiepTheo == 0) ? -1 : 1;
+
+if (trangThai == 3) {
+phanThuong = -1;
+}
+
+capNhatQ(trangThai, hanhDong, phanThuong, trangThaiTiepTheo);
+
+if (denDich) {
+if (trangThai == 0) {
+denDich = false;
+}
+} else {
+if (trangThai == trangThaiDich) {
+denDich = true;
+}
+}
+}
+
